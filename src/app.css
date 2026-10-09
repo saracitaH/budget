@@ -1,0 +1,121 @@
+:root {
+  --bg: #f4f3ef;
+  --surface: #ffffff;
+  --field: #ecebe6;
+  --key: #ffffff;
+  --key-active: #dddcd6;
+  --track: #e6e5df;
+  --text: #1a1d1c;
+  --muted: #6b716f;
+  --line: #e4e3dd;
+  --accent: #0f5e55;
+  --accent-text: #0f5e55;
+  --accent-soft: #dcefeb;
+  --on-accent: #ffffff;
+  --ok: #17803d;
+  --ok-soft: #e1f4e7;
+  --warn: #b45309;
+  --warn-soft: #fbecd7;
+  --on-warn: #ffffff;
+  --danger: #c0262d;
+  --danger-soft: #fbe3e3;
+  --toast: #1f2423;
+  --on-toast: #f3f5f4;
+  --toast-action: #7fd8cb;
+
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Thème sombre : automatique (réglage de l'iPhone) sauf si « Clair » est forcé, ou forcé via « Sombre » */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0f1211;
+    --surface: #1b1f1e;
+    --field: #262b29;
+    --key: #222726;
+    --key-active: #343a38;
+    --track: #2c3230;
+    --text: #eef0ef;
+    --muted: #9aa19f;
+    --line: #2a2f2d;
+    --accent: #3fb3a3;
+    --accent-text: #5cc8b8;
+    --accent-soft: #183a35;
+    --on-accent: #062b27;
+    --ok: #4ade80;
+    --ok-soft: #173424;
+    --warn: #fbbf24;
+    --warn-soft: #3a2e12;
+    --on-warn: #2a1d00;
+    --danger: #f87171;
+    --danger-soft: #3d1c1c;
+    --toast: #e9eceb;
+    --on-toast: #141817;
+    --toast-action: #0f5e55;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0f1211;
+  --surface: #1b1f1e;
+  --field: #262b29;
+  --key: #222726;
+  --key-active: #343a38;
+  --track: #2c3230;
+  --text: #eef0ef;
+  --muted: #9aa19f;
+  --line: #2a2f2d;
+  --accent: #3fb3a3;
+  --accent-text: #5cc8b8;
+  --accent-soft: #183a35;
+  --on-accent: #062b27;
+  --ok: #4ade80;
+  --ok-soft: #173424;
+  --warn: #fbbf24;
+  --warn-soft: #3a2e12;
+  --on-warn: #2a1d00;
+  --danger: #f87171;
+  --danger-soft: #3d1c1c;
+  --toast: #e9eceb;
+  --on-toast: #141817;
+  --toast-action: #0f5e55;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overscroll-behavior: none;
+}
+
+button {
+  font: inherit;
+  border: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  font-size: 16px; /* en dessous, Safari zoome sur le champ */
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
