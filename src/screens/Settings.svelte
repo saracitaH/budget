@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import BudgetSplit from '../components/BudgetSplit.svelte'
+  import CategoryEditor from '../components/CategoryEditor.svelte'
   import FixedChargesEditor from '../components/FixedChargesEditor.svelte'
   import MoneyField from '../components/MoneyField.svelte'
   import { readBackup, restoreBackup, type BackupSummary } from '../lib/backup'
   import { daysSince, longDate } from '../lib/dates'
-  import type { Category, FixedChargeInput, Settings, Theme } from '../lib/db'
+  import type { Category, FixedChargeInput, Settings, Subcategory, Theme } from '../lib/db'
   import { db, saveCategoryBudgets, saveFixedCharges, syncCurrentMonth, updateSettings } from '../lib/db'
   import { formatBytes, isPersisted, isStandalone, requestPersist, storageEstimate } from '../lib/platform'
   import { showToast } from '../lib/toast.svelte'
@@ -13,10 +14,12 @@
   let {
     settings,
     categories,
+    subcategories,
     onbackup,
   }: {
     settings: Settings
     categories: Category[]
+    subcategories: Subcategory[]
     onbackup: () => void
   } = $props()
 
@@ -58,11 +61,6 @@
   async function saveBudgets() {
     await saveCategoryBudgets(budgets)
     await syncCurrentMonth()
-  }
-
-  async function renameCategory(c: Category, patch: Partial<Pick<Category, 'name' | 'emoji'>>) {
-    const clean = Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v?.trim()]).filter(([, v]) => v))
-    if (Object.keys(clean).length) await db.categories.update(c.id, clean)
   }
 
   async function setTheme(theme: Theme) {
@@ -138,27 +136,8 @@
   </div>
 
   <div class="card">
-    <h2>Catégories</h2>
-    <div class="cats">
-      {#each categories as c (c.id)}
-        <div class="cat">
-          <input
-            class="emoji"
-            type="text"
-            value={c.emoji}
-            aria-label={`Emoji de ${c.name}`}
-            onchange={(e) => renameCategory(c, { emoji: e.currentTarget.value })}
-          />
-          <input
-            class="name"
-            type="text"
-            value={c.name}
-            aria-label={`Nom de ${c.name}`}
-            onchange={(e) => renameCategory(c, { name: e.currentTarget.value })}
-          />
-        </div>
-      {/each}
-    </div>
+    <h2>Catégories et sous-catégories</h2>
+    <CategoryEditor {categories} {subcategories} />
   </div>
 
   <div class="card">
@@ -265,28 +244,6 @@
   }
   .note b {
     color: var(--text);
-  }
-  .cats {
-    display: grid;
-    gap: 6px;
-  }
-  .cat {
-    display: grid;
-    grid-template-columns: 52px 1fr;
-    gap: 8px;
-  }
-  .cat input {
-    height: 44px;
-    border: none;
-    border-radius: 10px;
-    background: var(--field);
-    color: var(--text);
-    padding: 0 12px;
-    min-width: 0;
-  }
-  .cat .emoji {
-    text-align: center;
-    padding: 0;
   }
   .primary,
   .secondary,

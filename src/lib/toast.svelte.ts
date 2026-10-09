@@ -6,6 +6,8 @@ export interface Toast {
   detail?: string
   tone?: Status
   action?: { label: string; run: () => void }
+  /** Boutons de précision (ex. sous-catégories) affichés sous le message */
+  choices?: { label: string; run: () => void }[]
 }
 
 export const toastState = $state<{ current: Toast | null }>({ current: null })

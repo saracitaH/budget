@@ -1,13 +1,18 @@
 <script lang="ts">
   import Keypad from '../components/Keypad.svelte'
-  import type { MonthStats } from '../lib/budget'
+  import type { CategoryStat, MonthStats } from '../lib/budget'
   import { addDays, dayLabel, monthOf } from '../lib/dates'
-  import type { Category } from '../lib/db'
-  import { addTransaction, deleteTransaction } from '../lib/db'
+  import type { Category, Subcategory } from '../lib/db'
+  import { addTransaction, deleteTransaction, updateTransaction } from '../lib/db'
   import { applyKey, formatEUR, formatEURRounded, keypadToCents, type KeypadKey } from '../lib/money'
-  import { showToast } from '../lib/toast.svelte'
+  import { hideToast, showToast } from '../lib/toast.svelte'
 
-  let { categories, stats, today }: { categories: Category[]; stats: MonthStats | null; today: string } = $props()
+  let {
+    categories,
+    subcategories,
+    stats,
+    today,
+  }: { categories: Category[]; subcategories: Subcategory[]; stats: MonthStats | null; today: string } = $props()
 
   let amountText = $state('')
   let label = $state('')
@@ -27,6 +32,8 @@
   const display = $derived(amountText === '' ? '0' : amountText)
 
   function onkey(key: KeypadKey) {
+    // Nouvelle saisie : le message de la dépense précédente n'a plus lieu d'être
+    if (amountText === '') hideToast()
     amountText = applyKey(amountText, key)
   }
 
@@ -45,28 +52,52 @@
     saving = true
     try {
       const amount = cents
+      // Chiffres d'avant l'ajout : le message calcule le reste à partir d'eux
+      const before = monthOf(date) === stats?.monthId ? statById.get(c.id) : undefined
       const tx = await addTransaction({ amount, date, categoryId: c.id, label })
       amountText = ''
       label = ''
-      showToast(feedback(c, amount, tx.id), 4500)
+      showToast(toastFor(c, null, amount, tx.id, before), subsOf(c).length ? 7000 : 4500)
     } finally {
       saving = false
     }
   }
 
-  function feedback(c: Category, amount: number, txId: string) {
+  function subsOf(c: Category): Subcategory[] {
+    return subcategories.filter((s) => s.categoryId === c.id && !s.archived)
+  }
+
+  /** Message et couleur selon ce qui reste après cette dépense */
+  function remainingInfo(name: string, budget: number, spent: number, remaining: number) {
+    if (budget <= 0) return { detail: `Pas de budget pour ${name}`, tone: 'warn' as const }
+    if (remaining < 0) return { detail: `${name} : budget dépassé de ${formatEURRounded(-remaining)}`, tone: 'over' as const }
+    if (spent >= budget * 0.8) return { detail: `${name} : plus que ${formatEURRounded(remaining)}`, tone: 'warn' as const }
+    return { detail: `${name} : reste ${formatEURRounded(remaining)}`, tone: 'ok' as const }
+  }
+
+  function toastFor(c: Category, sub: Subcategory | null, amount: number, txId: string, before?: CategoryStat) {
     const base = {
-      message: `${formatEUR(amount)} · ${c.emoji} ${c.name}`,
+      message: `${formatEUR(amount)} · ${c.emoji} ${c.name}${sub ? ` › ${sub.name}` : ''}`,
       action: { label: 'Annuler', run: () => deleteTransaction(txId) },
+      // Sans sous-catégorie choisie : on propose de préciser en un tap
+      choices: sub
+        ? undefined
+        : subsOf(c).map((s) => ({
+            label: `${s.emoji}\u00a0${s.name}`.trim(),
+            run: () => assign(c, s, amount, txId, before),
+          })),
     }
-    const st = statById.get(c.id)
-    if (!st || monthOf(date) !== stats?.monthId) return { ...base, detail: dayLabel(date, today) }
-    if (st.budget <= 0) return { ...base, detail: 'Pas de budget pour cette catégorie', tone: 'warn' as const }
-    const remaining = st.remaining - amount
-    if (remaining < 0) return { ...base, detail: `Budget dépassé de ${formatEURRounded(-remaining)}`, tone: 'over' as const }
-    if (st.spent + amount >= st.budget * 0.8)
-      return { ...base, detail: `Plus que ${formatEURRounded(remaining)} ce mois-ci`, tone: 'warn' as const }
-    return { ...base, detail: `Reste ${formatEURRounded(remaining)}`, tone: 'ok' as const }
+    if (!before) return { ...base, detail: dayLabel(date, today) }
+    const subStat = sub ? before.subs.find((r) => r.sub?.id === sub.id) : undefined
+    if (sub && subStat?.budget != null && subStat.remaining != null) {
+      return { ...base, ...remainingInfo(sub.name, subStat.budget, subStat.spent + amount, subStat.remaining - amount) }
+    }
+    return { ...base, ...remainingInfo(c.name, before.budget, before.spent + amount, before.remaining - amount) }
+  }
+
+  async function assign(c: Category, s: Subcategory, amount: number, txId: string, before?: CategoryStat) {
+    await updateTransaction(txId, { subcategoryId: s.id })
+    showToast(toastFor(c, s, amount, txId, before), 4000)
   }
 
   // Clavier physique (tests sur ordinateur)
@@ -119,7 +150,7 @@
     onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
   />
 
-  <div class="grid">
+  <div class="grid" class:wide={categories.length > 9} class:scroll={categories.length > 12}>
     {#each categories as c (c.id)}
       {@const st = statById.get(c.id)}
       <button type="button" class="tile" onpointerdown={(e) => typing && e.preventDefault()} onclick={() => pick(c)}>
@@ -250,16 +281,26 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 6px;
   }
+  .grid.wide {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  /* Au-delà de 12 : trois rangées visibles, le reste en faisant défiler */
+  .grid.scroll {
+    max-height: calc(3 * clamp(58px, 8.4dvh, 72px) + 2 * 6px + 18px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   .tile {
     height: clamp(58px, 8.4dvh, 72px);
     border-radius: 14px;
     background: var(--surface);
     color: var(--text);
-    display: grid;
-    grid-template-rows: auto auto auto;
-    place-content: center;
-    justify-items: center;
-    gap: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 0;
     line-height: 1.15;
     box-shadow: 0 0 0 1px var(--line) inset;
   }
@@ -273,6 +314,14 @@
   .name {
     font-size: 0.78rem;
     font-weight: 600;
+    max-width: 100%;
+    padding: 0 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wide .name {
+    font-size: 0.72rem;
   }
   .rest {
     font-size: 0.7rem;

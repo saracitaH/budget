@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeStats, statusFor } from './budget'
 import { proposeBudgets } from './categories'
-import type { Category, Month, Transaction } from './db'
+import type { Category, Month, Subcategory, Transaction } from './db'
 
 const cat = (id: string, budget: number): Category => ({
   id,
@@ -64,6 +64,36 @@ describe('computeStats', () => {
     expect(s.projectedSavings).toBe(10000)
     expect(s.onTrack).toBe(false)
     expect(s.categories.find((c) => c.category.id === 'sorties')?.status).toBe('over')
+  })
+
+  it('détaille les sous-catégories, avec budget facultatif et « Sans précision »', () => {
+    const sub = (id: string, archived = false): Subcategory => ({
+      id,
+      categoryId: 'sorties',
+      name: id,
+      emoji: '',
+      order: 0,
+      budget: null,
+      archived,
+    })
+    const subs = [sub('bar'), sub('resto'), sub('ancienne', true)]
+    const withSub = (id: string | undefined, amount: number) => ({ ...tx('sorties', amount), subcategoryId: id })
+    const s = computeStats(
+      { ...month, subBudgets: { bar: 6000 } },
+      cats,
+      [withSub('bar', 4800), withSub('resto', 4200), withSub(undefined, 1000)],
+      '2026-10-10',
+      subs,
+    )
+    const sorties = s.categories.find((c) => c.category.id === 'sorties')!
+    expect(sorties.spent).toBe(10000)
+    expect(sorties.subs.map((r) => [r.sub?.id ?? null, r.spent, r.remaining])).toEqual([
+      ['bar', 4800, 1200],
+      ['resto', 4200, null],
+      [null, 1000, null],
+    ])
+    expect(sorties.subs[0].status).toBe('warn')
+    expect(s.categories.find((c) => c.category.id === 'courses')!.subs).toEqual([])
   })
 
   it('un mois passé est considéré comme entièrement écoulé', () => {

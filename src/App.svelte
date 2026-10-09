@@ -4,7 +4,7 @@
   import { exportBackup } from './lib/backup'
   import { computeStats } from './lib/budget'
   import { daysSince, localISO, monthOf } from './lib/dates'
-  import type { Category, Month, Settings, Transaction } from './lib/db'
+  import type { Category, Month, Settings, Subcategory, Transaction } from './lib/db'
   import { db, ensureMonth, ensureSeed, getSettings } from './lib/db'
   import { isIOS, isStandalone, requestPersist } from './lib/platform'
   import { hideToast, showToast, toastState } from './lib/toast.svelte'
@@ -20,6 +20,8 @@
   interface AppData {
     settings: Settings
     categories: Category[]
+    /** Toutes, y compris masquées (pour afficher les anciennes dépenses) */
+    subcategories: Subcategory[]
     month: Month | undefined
     transactions: Transaction[]
     totalCount: number
@@ -66,6 +68,7 @@
     const sub = liveQuery(async () => ({
       settings: await getSettings(),
       categories: await db.categories.orderBy('order').filter((c) => !c.archived).toArray(),
+      subcategories: await db.subcategories.orderBy('order').toArray(),
       month: await db.months.get(m),
       transactions: await db.transactions.where('month').equals(m).toArray(),
       totalCount: await db.transactions.count(),
@@ -77,7 +80,7 @@
   })
 
   const stats = $derived(
-    data?.month ? computeStats(data.month, data.categories, data.transactions, today) : null,
+    data?.month ? computeStats(data.month, data.categories, data.transactions, today, data.subcategories) : null,
   )
 
   // Rappel de sauvegarde : jamais faite (et des données existent) ou plus de 7 jours
@@ -142,13 +145,24 @@
 
     <main class:fixed={tab === 'entry'}>
       {#if tab === 'entry'}
-        <Entry categories={data.categories} {stats} {today} />
+        <Entry categories={data.categories} subcategories={data.subcategories} {stats} {today} />
       {:else if tab === 'dashboard' && stats}
         <Dashboard {stats} {backupDue} onbackup={backup} />
       {:else if tab === 'expenses'}
-        <Expenses transactions={data.transactions} categories={data.categories} {today} {monthId} />
+        <Expenses
+          transactions={data.transactions}
+          categories={data.categories}
+          subcategories={data.subcategories}
+          {today}
+          {monthId}
+        />
       {:else if tab === 'settings'}
-        <SettingsScreen settings={data.settings} categories={data.categories} onbackup={backup} />
+        <SettingsScreen
+          settings={data.settings}
+          categories={data.categories}
+          subcategories={data.subcategories}
+          onbackup={backup}
+        />
       {/if}
     </main>
 
@@ -169,7 +183,7 @@
 {#if toastState.current}
   {@const t = toastState.current}
   {#key t.id}
-    <div class="toast {t.tone ?? ''}" role="status">
+    <div class="toast {t.tone ?? ''}" class:has-choices={t.choices?.length} role="status">
       <div class="msg">
         <b>{t.message}</b>
         {#if t.detail}<span>{t.detail}</span>{/if}
@@ -177,11 +191,19 @@
       {#if t.action}
         <button
           type="button"
+          class="undo"
           onclick={() => {
             t.action?.run()
             hideToast()
           }}>{t.action.label}</button
         >
+      {/if}
+      {#if t.choices?.length}
+        <div class="choices">
+          {#each t.choices as c (c.label)}
+            <button type="button" onclick={c.run}>{c.label}</button>
+          {/each}
+        </div>
       {/if}
     </div>
   {/key}
@@ -259,11 +281,28 @@
     border-radius: 50%;
     background: var(--warn);
   }
+  .toast.has-choices {
+    flex-wrap: wrap;
+  }
+  .choices {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .choices button {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--toast-chip);
+    color: var(--on-toast);
+    font-weight: 600;
+  }
   .toast {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: calc(env(safe-area-inset-bottom) + 72px);
+    /* En haut : le pavé numérique et la grille restent libres pour la saisie suivante */
+    top: calc(env(safe-area-inset-top) + 8px);
     max-width: 536px;
     margin: 0 auto;
     z-index: 30;
@@ -290,7 +329,7 @@
   }
   @keyframes pop {
     from {
-      transform: translateY(12px);
+      transform: translateY(-12px);
       opacity: 0;
     }
   }
@@ -303,7 +342,7 @@
     font-size: 0.85rem;
     opacity: 0.8;
   }
-  .toast button {
+  .toast .undo {
     background: none;
     color: var(--toast-action);
     font-weight: 700;

@@ -1,5 +1,5 @@
 import { dayOfMonth, daysInMonth, monthOf } from './dates'
-import type { Category, Month, Transaction } from './db'
+import type { Category, Month, Subcategory, Transaction } from './db'
 
 /**
  * ok    : sous le rythme prévu
@@ -9,8 +9,20 @@ import type { Category, Month, Transaction } from './db'
  */
 export type Status = 'ok' | 'pace' | 'warn' | 'over'
 
+export interface SubStat {
+  /** null = dépenses de la catégorie sans sous-catégorie (« Sans précision ») */
+  sub: Subcategory | null
+  /** null = pas de budget propre */
+  budget: number | null
+  spent: number
+  remaining: number | null
+  status: Status | null
+}
+
 export interface CategoryStat {
   category: Category
+  /** Détail par sous-catégorie ; vide si la catégorie n'en a pas */
+  subs: SubStat[]
   budget: number
   spent: number
   remaining: number
@@ -65,6 +77,7 @@ export function computeStats(
   categories: Category[],
   transactions: Transaction[],
   today: string,
+  subcategories: Subcategory[] = [],
 ): MonthStats {
   const dim = daysInMonth(month.id)
   const currentMonth = monthOf(today)
@@ -73,7 +86,34 @@ export function computeStats(
   const daysLeft = Math.max(1, dim - day + 1)
 
   const spentBy = new Map<string, number>()
-  for (const t of transactions) spentBy.set(t.categoryId, (spentBy.get(t.categoryId) ?? 0) + t.amount)
+  const spentBySub = new Map<string, number>()
+  for (const t of transactions) {
+    spentBy.set(t.categoryId, (spentBy.get(t.categoryId) ?? 0) + t.amount)
+    const subKey = `${t.categoryId}/${t.subcategoryId ?? ''}`
+    spentBySub.set(subKey, (spentBySub.get(subKey) ?? 0) + t.amount)
+  }
+  const subBudgets = month.subBudgets ?? {}
+
+  function subStats(category: Category): SubStat[] {
+    const own = subcategories
+      .filter((s) => s.categoryId === category.id && (!s.archived || spentBySub.has(`${category.id}/${s.id}`)))
+      .sort((a, b) => a.order - b.order)
+    if (own.length === 0) return []
+    const rows: SubStat[] = own.map((sub) => {
+      const spent = spentBySub.get(`${category.id}/${sub.id}`) ?? 0
+      const budget = sub.id in subBudgets ? subBudgets[sub.id] : null
+      return {
+        sub,
+        budget,
+        spent,
+        remaining: budget === null ? null : budget - spent,
+        status: budget === null ? null : statusFor(spent, budget, budget * elapsed),
+      }
+    })
+    const unassigned = spentBySub.get(`${category.id}/`) ?? 0
+    if (unassigned !== 0) rows.push({ sub: null, budget: null, spent: unassigned, remaining: null, status: null })
+    return rows
+  }
 
   // Catégories budgétées ce mois-ci, plus celles qui ont des dépenses sans budget (ex. archivées depuis)
   const shown = categories.filter((c) => !c.archived || spentBy.has(c.id))
@@ -83,6 +123,7 @@ export function computeStats(
     const expected = budget * elapsed
     return {
       category,
+      subs: subStats(category),
       budget,
       spent,
       remaining: budget - spent,

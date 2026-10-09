@@ -42,6 +42,38 @@
     <span>{formatEURRounded(stat.spent)} / {formatEURRounded(stat.budget)}</span>
     {#if STATUS_LABEL[stat.status]}<span class="tag {stat.status}">{STATUS_LABEL[stat.status]}</span>{/if}
   </div>
+
+  {#if stat.subs.some((r) => r.spent !== 0 || r.budget !== null)}
+    <ul class="subs">
+      {#each stat.subs as r (r.sub?.id ?? 'none')}
+        {#if r.spent !== 0 || r.budget !== null}
+          <li>
+            <div class="subhead">
+              <span>{r.sub ? `${r.sub.emoji} ${r.sub.name}` : 'Sans précision'}</span>
+              {#if r.budget !== null && r.remaining !== null}
+                <span class="remaining {r.status}">
+                  {#if r.remaining >= 0}reste <b>{formatEURRounded(r.remaining)}</b>{:else}<b>+{formatEURRounded(-r.remaining)}</b> de trop{/if}
+                </span>
+              {:else}
+                <span class="spent">{formatEURRounded(r.spent)}</span>
+              {/if}
+            </div>
+            {#if r.budget !== null}
+              <div class="bar small">
+                <div
+                  class="fill {r.status}"
+                  style:width="{r.budget > 0 ? Math.min(1, r.spent / r.budget) * 100 : r.spent > 0 ? 100 : 0}%"
+                ></div>
+                {#if elapsed > 0 && elapsed < 1 && r.budget > 0}
+                  <div class="marker" style:left="{elapsed * 100}%"></div>
+                {/if}
+              </div>
+            {/if}
+          </li>
+        {/if}
+      {/each}
+    </ul>
+  {/if}
 </div>
 
 <style>
@@ -117,6 +149,28 @@
   }
   .tag {
     font-weight: 600;
+  }
+  .subs {
+    list-style: none;
+    margin: 4px 0 0 2.2em;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .subhead {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.85rem;
+  }
+  .subhead .remaining,
+  .spent {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+  .bar.small {
+    height: 6px;
+    margin-top: 3px;
   }
   .tag.pace,
   .tag.warn {

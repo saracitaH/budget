@@ -21,6 +21,22 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { id: 'divers', name: 'Divers', emoji: '📦', color: '#868e96', weight: 5 },
 ]
 
+/** Sous-catégories créées au premier lancement, par catégorie par défaut */
+export const DEFAULT_SUBCATEGORIES: Record<string, { name: string; emoji: string }[]> = {
+  sorties: [
+    { name: 'Bar', emoji: '🍺' },
+    { name: 'Resto', emoji: '🍝' },
+    { name: 'Activités', emoji: '🎳' },
+  ],
+}
+
+const EXTRA_COLORS = ['#5c940d', '#ae3ec9', '#f08c00', '#1098ad', '#e03131', '#4263eb', '#d9480f', '#495057']
+
+/** Couleur pour une catégorie ajoutée, à partir du nombre de catégories existantes */
+export function nextColor(count: number): string {
+  return EXTRA_COLORS[count % EXTRA_COLORS.length]
+}
+
 export function defaultCategories(): Category[] {
   return DEFAULT_CATEGORIES.map(({ weight: _w, ...c }, i) => ({ ...c, order: i, budget: 0, archived: false }))
 }

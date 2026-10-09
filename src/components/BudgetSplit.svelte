@@ -17,6 +17,11 @@
     onchange?: () => void
   } = $props()
 
+  // Une catégorie ajoutée entre-temps n'a pas encore de ligne : on part de son budget enregistré
+  $effect(() => {
+    for (const c of categories) if (budgets[c.id] === undefined) budgets[c.id] = c.budget
+  })
+
   const allocated = $derived(categories.reduce((s, c) => s + (budgets[c.id] ?? 0), 0))
   const unallocated = $derived(available - allocated)
 
@@ -48,10 +53,12 @@
 
 <div class="list">
   {#each categories as c (c.id)}
-    <div class="row">
-      <span class="name"><span class="emoji" aria-hidden="true">{c.emoji}</span>{c.name}</span>
-      <MoneyField bind:value={budgets[c.id]} ariaLabel={`Budget ${c.name}`} onchange={() => onchange?.()} />
-    </div>
+    {#if budgets[c.id] !== undefined}
+      <div class="row">
+        <span class="name"><span class="emoji" aria-hidden="true">{c.emoji}</span>{c.name}</span>
+        <MoneyField bind:value={budgets[c.id]} ariaLabel={`Budget ${c.name}`} onchange={() => onchange?.()} />
+      </div>
+    {/if}
   {/each}
 </div>
 

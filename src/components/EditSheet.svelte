@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Category, Transaction } from '../lib/db'
+  import type { Category, Subcategory, Transaction } from '../lib/db'
   import { db, deleteTransaction, updateTransaction } from '../lib/db'
   import { formatEUR } from '../lib/money'
   import { showToast } from '../lib/toast.svelte'
@@ -8,10 +8,12 @@
   let {
     tx,
     categories,
+    subcategories,
     onclose,
   }: {
     tx: Transaction
     categories: Category[]
+    subcategories: Subcategory[]
     onclose: () => void
   } = $props()
 
@@ -21,14 +23,26 @@
   // svelte-ignore state_referenced_locally
   let categoryId = $state(tx.categoryId)
   // svelte-ignore state_referenced_locally
+  let subcategoryId = $state<string | undefined>(tx.subcategoryId)
+  // svelte-ignore state_referenced_locally
   let date = $state(tx.date)
   // svelte-ignore state_referenced_locally
   let label = $state(tx.label ?? '')
   let confirmDelete = $state(false)
 
+  // La sous-catégorie actuelle reste proposée même si elle a été masquée depuis
+  const subs = $derived(
+    subcategories.filter((s) => s.categoryId === categoryId && (!s.archived || s.id === tx.subcategoryId)),
+  )
+
+  function chooseCategory(id: string) {
+    if (id !== categoryId) subcategoryId = undefined
+    categoryId = id
+  }
+
   async function save() {
     if (amount <= 0 || !date) return
-    await updateTransaction(tx.id, { amount, categoryId, date, label })
+    await updateTransaction(tx.id, { amount, categoryId, subcategoryId, date, label })
     onclose()
   }
 
@@ -70,12 +84,33 @@
         role="radio"
         aria-checked={c.id === categoryId}
         class:selected={c.id === categoryId}
-        onclick={() => (categoryId = c.id)}
+        onclick={() => chooseCategory(c.id)}
       >
         <span aria-hidden="true">{c.emoji}</span>{c.name}
       </button>
     {/each}
   </div>
+
+  {#if subs.length}
+    <div class="subs" role="radiogroup" aria-label="Sous-catégorie">
+      <button
+        type="button"
+        role="radio"
+        aria-checked={!subcategoryId}
+        class:selected={!subcategoryId}
+        onclick={() => (subcategoryId = undefined)}>Sans précision</button
+      >
+      {#each subs as s (s.id)}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={s.id === subcategoryId}
+          class:selected={s.id === subcategoryId}
+          onclick={() => (subcategoryId = s.id)}>{s.emoji} {s.name}</button
+        >
+      {/each}
+    </div>
+  {/if}
 
   <button type="button" class="delete" class:confirm={confirmDelete} onclick={remove}>
     {confirmDelete ? 'Confirmer la suppression' : 'Supprimer cette dépense'}
@@ -181,6 +216,23 @@
     font-size: 1.3rem;
   }
   .cats button.selected {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .subs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: -6px;
+  }
+  .subs button {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--field);
+    color: var(--text);
+    font-size: 0.85rem;
+  }
+  .subs button.selected {
     background: var(--accent);
     color: var(--on-accent);
   }

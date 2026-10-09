@@ -1,17 +1,19 @@
 <script lang="ts">
   import EditSheet from '../components/EditSheet.svelte'
   import { dayLabel, monthLabel } from '../lib/dates'
-  import type { Category, Transaction } from '../lib/db'
+  import type { Category, Subcategory, Transaction } from '../lib/db'
   import { formatEUR } from '../lib/money'
 
   let {
     transactions,
     categories,
+    subcategories,
     today,
     monthId,
   }: {
     transactions: Transaction[]
     categories: Category[]
+    subcategories: Subcategory[]
     today: string
     monthId: string
   } = $props()
@@ -20,6 +22,14 @@
   let editing = $state<Transaction | null>(null)
 
   const byId = $derived(new Map(categories.map((c) => [c.id, c])))
+  const subById = $derived(new Map(subcategories.map((s) => [s.id, s])))
+
+  /** « Sorties › Bar », ou « Sorties » */
+  function catPath(t: Transaction): string {
+    const name = byId.get(t.categoryId)?.name ?? 'Sans catégorie'
+    const sub = t.subcategoryId ? subById.get(t.subcategoryId) : undefined
+    return sub ? `${name} › ${sub.name}` : name
+  }
   const visible = $derived(filter ? transactions.filter((t) => t.categoryId === filter) : transactions)
   const total = $derived(visible.reduce((s, t) => s + t.amount, 0))
 
@@ -70,8 +80,8 @@
             <button type="button" onclick={() => (editing = t)}>
               <span class="emoji" aria-hidden="true">{c?.emoji ?? '❔'}</span>
               <span class="what">
-                <span class="title">{t.label ?? c?.name ?? 'Sans catégorie'}</span>
-                {#if t.label}<span class="cat">{c?.name}</span>{/if}
+                <span class="title">{t.label ?? catPath(t)}</span>
+                {#if t.label}<span class="cat">{catPath(t)}</span>{/if}
               </span>
               <span class="amt">{formatEUR(t.amount)}</span>
             </button>
@@ -83,7 +93,7 @@
 </section>
 
 {#if editing}
-  <EditSheet tx={editing} {categories} onclose={() => (editing = null)} />
+  <EditSheet tx={editing} {categories} {subcategories} onclose={() => (editing = null)} />
 {/if}
 
 <style>
