@@ -31,14 +31,22 @@ export interface Subcategory {
 
 export type TxSource = 'manual' | 'recurring' | 'applepay' | 'import'
 
+/**
+ * Pseudo-catégorie des rentrées exceptionnelles (cadeau, vente…) : montant positif,
+ * ajouté aux revenus du mois au lieu d'être compté comme une dépense.
+ */
+export const EXTRA_INCOME = '__rentree'
+export const EXTRA_INCOME_LABEL = { emoji: '💶', name: 'Rentrée exceptionnelle' }
+
 export interface Transaction {
   id: string
-  /** Centimes ; négatif = remboursement */
+  /** Centimes ; négatif = remboursement reçu dans la catégorie */
   amount: number
   /** AAAA-MM-JJ */
   date: string
   /** AAAA-MM, dérivé de date, indexé pour les requêtes par mois */
   month: string
+  /** Id de catégorie, ou EXTRA_INCOME pour une rentrée exceptionnelle */
   categoryId: string
   subcategoryId?: string
   label?: string

@@ -3,7 +3,7 @@
   import type { CategoryStat, MonthStats } from '../lib/budget'
   import { addDays, dayLabel, monthOf } from '../lib/dates'
   import type { Category, Subcategory } from '../lib/db'
-  import { addTransaction, deleteTransaction, updateTransaction } from '../lib/db'
+  import { addTransaction, deleteTransaction, EXTRA_INCOME, EXTRA_INCOME_LABEL, updateTransaction } from '../lib/db'
   import { applyKey, formatEUR, formatEURRounded, keypadToCents, type KeypadKey } from '../lib/money'
   import { hideToast, showToast } from '../lib/toast.svelte'
 
@@ -19,6 +19,8 @@
   // svelte-ignore state_referenced_locally
   let date = $state(today)
   let typing = $state(false)
+  /** expense : dépense ; income : remboursement (dans une catégorie) ou rentrée exceptionnelle */
+  let mode = $state<'expense' | 'income'>('expense')
   let shake = $state(false)
   let saving = false
 
@@ -30,6 +32,12 @@
   const cents = $derived(keypadToCents(amountText))
   const statById = $derived(new Map(stats?.categories.map((s) => [s.category.id, s]) ?? []))
   const display = $derived(amountText === '' ? '0' : amountText)
+  const tiles = $derived(categories.length + (mode === 'income' ? 1 : 0))
+
+  /** « 12 € » pour une dépense, « +20 € » pour de l'argent qui rentre (montant négatif = remboursement) */
+  function signed(amount: number): string {
+    return amount < 0 ? `+${formatEUR(-amount)}` : formatEUR(amount)
+  }
 
   function onkey(key: KeypadKey) {
     // Nouvelle saisie : le message de la dépense précédente n'a plus lieu d'être
@@ -51,13 +59,38 @@
     if (saving) return
     saving = true
     try {
-      const amount = cents
+      // Remboursement : montant négatif, qui réduit ce qui a été dépensé dans la catégorie
+      const amount = mode === 'income' ? -cents : cents
       // Chiffres d'avant l'ajout : le message calcule le reste à partir d'eux
       const before = monthOf(date) === stats?.monthId ? statById.get(c.id) : undefined
       const tx = await addTransaction({ amount, date, categoryId: c.id, label })
       amountText = ''
       label = ''
+      mode = 'expense'
       showToast(toastFor(c, null, amount, tx.id, before), subsOf(c).length ? 7000 : 4500)
+    } finally {
+      saving = false
+    }
+  }
+
+  async function pickExtraIncome() {
+    if (cents <= 0) return nudge()
+    if (saving) return
+    saving = true
+    try {
+      const amount = cents
+      const sameMonth = monthOf(date) === stats?.monthId
+      const projected = (stats?.projectedSavings ?? 0) + amount
+      const tx = await addTransaction({ amount, date, categoryId: EXTRA_INCOME, label })
+      amountText = ''
+      label = ''
+      mode = 'expense'
+      showToast({
+        message: `+${formatEUR(amount)} · ${EXTRA_INCOME_LABEL.emoji} ${EXTRA_INCOME_LABEL.name}`,
+        detail: sameMonth ? `Épargne prévue : ${formatEURRounded(projected)}` : dayLabel(date, today),
+        tone: 'ok',
+        action: { label: 'Annuler', run: () => deleteTransaction(tx.id) },
+      })
     } finally {
       saving = false
     }
@@ -77,7 +110,7 @@
 
   function toastFor(c: Category, sub: Subcategory | null, amount: number, txId: string, before?: CategoryStat) {
     const base = {
-      message: `${formatEUR(amount)} · ${c.emoji} ${c.name}${sub ? ` › ${sub.name}` : ''}`,
+      message: `${signed(amount)} · ${c.emoji} ${c.name}${sub ? ` › ${sub.name}` : ''}${amount < 0 ? ' (remboursement)' : ''}`,
       action: { label: 'Annuler', run: () => deleteTransaction(txId) },
       // Sans sous-catégorie choisie : on propose de préciser en un tap
       choices: sub
@@ -133,9 +166,34 @@
     {/if}
   </header>
 
-  <div class="amount" class:empty={amountText === ''} class:shake onanimationend={() => (shake = false)}>
-    <span class="value">{display}</span><span class="cur">€</span>
+  <div class="mode" role="radiogroup" aria-label="Type de saisie">
+    <button type="button" role="radio" aria-checked={mode === 'expense'} class:on={mode === 'expense'} onclick={() => (mode = 'expense')}>
+      − Dépense
+    </button>
+    <button
+      type="button"
+      role="radio"
+      aria-checked={mode === 'income'}
+      class:on={mode === 'income'}
+      class="income"
+      onclick={() => (mode = 'income')}
+    >
+      + Rentrée
+    </button>
   </div>
+
+  <div
+    class="amount"
+    class:empty={amountText === ''}
+    class:income={mode === 'income'}
+    class:shake
+    onanimationend={() => (shake = false)}
+  >
+    {#if mode === 'income'}<span class="sign">+</span>{/if}<span class="value">{display}</span><span class="cur">€</span>
+  </div>
+  {#if mode === 'income'}
+    <p class="hint">Remboursement : touche la catégorie de la dépense. Sinon : {EXTRA_INCOME_LABEL.name}.</p>
+  {/if}
 
   <input
     class="label"
@@ -150,7 +208,7 @@
     onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
   />
 
-  <div class="grid" class:wide={categories.length > 9} class:scroll={categories.length > 12}>
+  <div class="grid" class:wide={tiles > 9} class:scroll={tiles > 12}>
     {#each categories as c (c.id)}
       {@const st = statById.get(c.id)}
       <button type="button" class="tile" onpointerdown={(e) => typing && e.preventDefault()} onclick={() => pick(c)}>
@@ -161,6 +219,19 @@
         {/if}
       </button>
     {/each}
+    {#if mode === 'income'}
+      <button
+        type="button"
+        class="tile extra"
+        onpointerdown={(e) => typing && e.preventDefault()}
+        onclick={pickExtraIncome}
+        aria-label={EXTRA_INCOME_LABEL.name}
+      >
+        <span class="emoji" aria-hidden="true">{EXTRA_INCOME_LABEL.emoji}</span>
+        <span class="name">Rentrée</span>
+        <span class="rest">exceptionnelle</span>
+      </button>
+    {/if}
   </div>
 
   {#if !typing}
@@ -230,6 +301,52 @@
   }
   .left b.neg {
     color: var(--danger);
+  }
+  .mode {
+    align-self: center;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--field);
+    border-radius: 10px;
+    padding: 3px;
+  }
+  .mode button {
+    min-width: 104px;
+    height: 32px;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .mode button.on {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+  .mode button.income.on {
+    color: var(--ok);
+  }
+  .hint {
+    margin: -6px 0 0;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .amount.income .value,
+  .amount.income .sign {
+    color: var(--ok);
+  }
+  .amount.income.empty .value {
+    opacity: 0.45;
+  }
+  .sign {
+    font-size: clamp(2.2rem, 7dvh, 3.2rem);
+    font-weight: 700;
+  }
+  .tile.extra {
+    background: var(--ok-soft);
+    box-shadow: 0 0 0 1px var(--ok) inset;
   }
   .amount {
     flex: 1;

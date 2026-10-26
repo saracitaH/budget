@@ -1,5 +1,5 @@
 import { dayOfMonth, daysInMonth, monthOf } from './dates'
-import type { Category, Month, Subcategory, Transaction } from './db'
+import { EXTRA_INCOME, type Category, type Month, type Subcategory, type Transaction } from './db'
 
 /**
  * ok    : sous le rythme prévu
@@ -48,13 +48,15 @@ export interface MonthStats {
   daysLeft: number
   perDay: number
   income: number
+  /** Rentrées exceptionnelles du mois (cadeau, vente…), qui s'ajoutent à l'épargne */
+  extraIncome: number
   fixedCharges: number
   savingsGoal: number
   /** Budget disponible pour les catégories : revenus − charges fixes − épargne */
   available: number
   /**
    * Épargne projetée en fin de mois, en supposant que chaque catégorie consomme tout son budget :
-   * revenus − charges fixes − Σ max(budget, dépensé). Elle baisse dès qu'une catégorie dépasse.
+   * revenus + rentrées − charges fixes − Σ max(budget, dépensé). Elle baisse dès qu'une catégorie dépasse.
    */
   projectedSavings: number
   onTrack: boolean
@@ -75,10 +77,14 @@ export function statusFor(spent: number, budget: number, expected: number): Stat
 export function computeStats(
   month: Month,
   categories: Category[],
-  transactions: Transaction[],
+  allTransactions: Transaction[],
   today: string,
   subcategories: Subcategory[] = [],
 ): MonthStats {
+  // Les rentrées exceptionnelles ne sont pas des dépenses : elles vont aux revenus du mois
+  const transactions = allTransactions.filter((t) => t.categoryId !== EXTRA_INCOME)
+  const extraIncome = allTransactions.filter((t) => t.categoryId === EXTRA_INCOME).reduce((s, t) => s + t.amount, 0)
+
   const dim = daysInMonth(month.id)
   const currentMonth = monthOf(today)
   const day = month.id === currentMonth ? dayOfMonth(today) : month.id < currentMonth ? dim : 0
@@ -139,7 +145,7 @@ export function computeStats(
   const knownIds = new Set(shown.map((c) => c.id))
   const orphanSpent = transactions.filter((t) => !knownIds.has(t.categoryId)).reduce((s, t) => s + t.amount, 0)
   const committed = stats.reduce((s, c) => s + Math.max(c.budget, c.spent), 0) + orphanSpent
-  const projectedSavings = month.income - month.fixedCharges - committed
+  const projectedSavings = month.income + extraIncome - month.fixedCharges - committed
 
   return {
     monthId: month.id,
@@ -153,6 +159,7 @@ export function computeStats(
     daysLeft,
     perDay: Math.max(0, remaining) / daysLeft,
     income: month.income,
+    extraIncome,
     fixedCharges: month.fixedCharges,
     savingsGoal: month.savingsGoal,
     available: month.income - month.fixedCharges - month.savingsGoal,

@@ -1,7 +1,7 @@
 <script lang="ts">
   import EditSheet from '../components/EditSheet.svelte'
   import { dayLabel, monthLabel } from '../lib/dates'
-  import type { Category, Subcategory, Transaction } from '../lib/db'
+  import { EXTRA_INCOME, EXTRA_INCOME_LABEL, type Category, type Subcategory, type Transaction } from '../lib/db'
   import { formatEUR } from '../lib/money'
 
   let {
@@ -24,14 +24,28 @@
   const byId = $derived(new Map(categories.map((c) => [c.id, c])))
   const subById = $derived(new Map(subcategories.map((s) => [s.id, s])))
 
+  const isExtra = (t: Transaction) => t.categoryId === EXTRA_INCOME
+  /** Argent qui rentre : remboursement (montant négatif) ou rentrée exceptionnelle */
+  const isIncoming = (t: Transaction) => isExtra(t) || t.amount < 0
+
   /** « Sorties › Bar », ou « Sorties » */
   function catPath(t: Transaction): string {
+    if (isExtra(t)) return EXTRA_INCOME_LABEL.name
     const name = byId.get(t.categoryId)?.name ?? 'Sans catégorie'
     const sub = t.subcategoryId ? subById.get(t.subcategoryId) : undefined
     return sub ? `${name} › ${sub.name}` : name
   }
   const visible = $derived(filter ? transactions.filter((t) => t.categoryId === filter) : transactions)
-  const total = $derived(visible.reduce((s, t) => s + t.amount, 0))
+  // Total des dépenses nettes (remboursements déduits) ; les rentrées exceptionnelles sont à part
+  const spent = (list: Transaction[]) => list.filter((t) => !isExtra(t)).reduce((s, t) => s + t.amount, 0)
+  const total = $derived(spent(visible))
+  const extraTotal = $derived(visible.filter(isExtra).reduce((s, t) => s + t.amount, 0))
+  const hasExtra = $derived(transactions.some(isExtra))
+
+  /** Montant affiché : « 12 € » pour une dépense, « +20 € » pour de l'argent qui rentre */
+  function shown(t: Transaction): string {
+    return isIncoming(t) ? `+${formatEUR(Math.abs(t.amount))}` : formatEUR(t.amount)
+  }
 
   const days = $derived.by(() => {
     const groups = new Map<string, Transaction[]>()
@@ -41,16 +55,19 @@
       list.push(t)
       groups.set(t.date, list)
     }
-    return [...groups].map(([date, items]) => ({ date, items, total: items.reduce((s, t) => s + t.amount, 0) }))
+    return [...groups].map(([date, items]) => ({ date, items, total: spent(items) }))
   })
 </script>
 
 <section class="expenses">
   <header>
     <h1>Dépenses</h1>
-    <span class="total">{formatEUR(total)}</span>
+    {#if filter !== EXTRA_INCOME}<span class="total">{formatEUR(total)}</span>{/if}
   </header>
-  <p class="month">{monthLabel(monthId)}</p>
+  <p class="month">
+    {monthLabel(monthId)}
+    {#if extraTotal > 0}· <span class="in">+{formatEUR(extraTotal)} de rentrées</span>{/if}
+  </p>
 
   <div class="filters" role="radiogroup" aria-label="Filtrer par catégorie">
     <button type="button" role="radio" aria-checked={filter === null} class:on={filter === null} onclick={() => (filter = null)}>
@@ -61,6 +78,17 @@
         {c.emoji} {c.name}
       </button>
     {/each}
+    {#if hasExtra}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={filter === EXTRA_INCOME}
+        class:on={filter === EXTRA_INCOME}
+        onclick={() => (filter = EXTRA_INCOME)}
+      >
+        {EXTRA_INCOME_LABEL.emoji} Rentrées
+      </button>
+    {/if}
   </div>
 
   {#if days.length === 0}
@@ -71,19 +99,21 @@
     <div class="day">
       <div class="dayhead">
         <span>{dayLabel(day.date, today)}</span>
-        <span>{formatEUR(day.total)}</span>
+        <span>{day.total !== 0 ? formatEUR(day.total) : ''}</span>
       </div>
       <ul>
         {#each day.items as t (t.id)}
           {@const c = byId.get(t.categoryId)}
           <li>
             <button type="button" onclick={() => (editing = t)}>
-              <span class="emoji" aria-hidden="true">{c?.emoji ?? '❔'}</span>
+              <span class="emoji" aria-hidden="true">{isExtra(t) ? EXTRA_INCOME_LABEL.emoji : (c?.emoji ?? '❔')}</span>
               <span class="what">
                 <span class="title">{t.label ?? catPath(t)}</span>
-                {#if t.label}<span class="cat">{catPath(t)}</span>{/if}
+                {#if t.label || (t.amount < 0 && !isExtra(t))}
+                  <span class="cat">{t.label ? catPath(t) : ''}{t.amount < 0 ? `${t.label ? ' · ' : ''}remboursement` : ''}</span>
+                {/if}
               </span>
-              <span class="amt">{formatEUR(t.amount)}</span>
+              <span class="amt" class:in={isIncoming(t)}>{shown(t)}</span>
             </button>
           </li>
         {/each}
@@ -200,6 +230,9 @@
   .cat {
     font-size: 0.8rem;
     color: var(--muted);
+  }
+  .in {
+    color: var(--ok);
   }
   .amt {
     font-weight: 600;

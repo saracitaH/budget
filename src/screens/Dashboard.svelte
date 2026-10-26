@@ -55,6 +55,9 @@
       <span class="kicker">Épargne prévue</span>
       <span class="mid">{formatEURRounded(stats.projectedSavings)}</span>
       <span class="sub">objectif {formatEURRounded(stats.savingsGoal)}</span>
+      {#if stats.extraIncome > 0}
+        <span class="sub">dont <b class="in">+{formatEURRounded(stats.extraIncome)}</b> de rentrées</span>
+      {/if}
     </div>
     {#if stats.onTrack}
       <span class="badge ok">Dans les clous{gap >= 500 ? ` · +${formatEURRounded(gap)}` : ''}</span>
@@ -130,6 +133,9 @@
   }
   .sub b {
     color: var(--text);
+  }
+  .sub b.in {
+    color: var(--ok);
   }
   .rhythm {
     margin-top: 6px;

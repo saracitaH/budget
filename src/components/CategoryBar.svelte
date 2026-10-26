@@ -55,7 +55,8 @@
                   {#if r.remaining >= 0}reste <b>{formatEURRounded(r.remaining)}</b>{:else}<b>+{formatEURRounded(-r.remaining)}</b> de trop{/if}
                 </span>
               {:else}
-                <span class="spent">{formatEURRounded(r.spent)}</span>
+                <!-- Négatif = plus de remboursements que de dépenses dans cette sous-catégorie -->
+                <span class="spent" class:in={r.spent < 0}>{r.spent < 0 ? `+${formatEURRounded(-r.spent)}` : formatEURRounded(r.spent)}</span>
               {/if}
             </div>
             {#if r.budget !== null}
@@ -167,6 +168,9 @@
   .spent {
     font-variant-numeric: tabular-nums;
     color: var(--muted);
+  }
+  .spent.in {
+    color: var(--ok);
   }
   .bar.small {
     height: 6px;

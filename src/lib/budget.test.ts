@@ -96,6 +96,24 @@ describe('computeStats', () => {
     expect(s.categories.find((c) => c.category.id === 'courses')!.subs).toEqual([])
   })
 
+  it('un remboursement redonne de la marge à sa catégorie', () => {
+    const s = computeStats(month, cats, [tx('sorties', 6000), tx('sorties', -2000)], '2026-10-10')
+    const sorties = s.categories.find((c) => c.category.id === 'sorties')!
+    expect(sorties.spent).toBe(4000)
+    expect(sorties.remaining).toBe(16000)
+    expect(s.remaining).toBe(56000)
+  })
+
+  it('une rentrée exceptionnelle augmente l\'épargne sans toucher aux catégories', () => {
+    const s = computeStats(month, cats, [tx('courses', 10000), tx('__rentree', 3500)], '2026-10-10')
+    expect(s.extraIncome).toBe(3500)
+    expect(s.totalSpent).toBe(10000)
+    expect(s.remaining).toBe(50000)
+    // 2500 + 35 − 1000 − 600 = 935 €
+    expect(s.projectedSavings).toBe(93500)
+    expect(s.categories.map((c) => c.category.id)).toEqual(['courses', 'sorties'])
+  })
+
   it('un mois passé est considéré comme entièrement écoulé', () => {
     const s = computeStats({ ...month, id: '2026-09' }, cats, [], '2026-10-10')
     expect(s.elapsed).toBe(1)

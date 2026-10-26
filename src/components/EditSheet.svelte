@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Category, Subcategory, Transaction } from '../lib/db'
-  import { db, deleteTransaction, updateTransaction } from '../lib/db'
+  import { db, deleteTransaction, EXTRA_INCOME, EXTRA_INCOME_LABEL, updateTransaction } from '../lib/db'
   import { formatEUR } from '../lib/money'
   import { showToast } from '../lib/toast.svelte'
   import MoneyField from './MoneyField.svelte'
@@ -19,7 +19,10 @@
 
   // Copie locale : rien n'est enregistré avant « Enregistrer »
   // svelte-ignore state_referenced_locally
-  let amount = $state(tx.amount)
+  let kind = $state<'expense' | 'income'>(tx.amount < 0 || tx.categoryId === EXTRA_INCOME ? 'income' : 'expense')
+  // Montant toujours saisi en positif ; le signe vient de « Dépense / Rentrée »
+  // svelte-ignore state_referenced_locally
+  let amount = $state(Math.abs(tx.amount))
   // svelte-ignore state_referenced_locally
   let categoryId = $state(tx.categoryId)
   // svelte-ignore state_referenced_locally
@@ -35,14 +38,25 @@
     subcategories.filter((s) => s.categoryId === categoryId && (!s.archived || s.id === tx.subcategoryId)),
   )
 
+  const canSave = $derived(amount > 0 && !!date && categoryId !== '')
+
   function chooseCategory(id: string) {
     if (id !== categoryId) subcategoryId = undefined
     categoryId = id
   }
 
+  function chooseKind(k: 'expense' | 'income') {
+    kind = k
+    // Une rentrée exceptionnelle n'a pas de sens en dépense : il faut choisir une catégorie
+    if (k === 'expense' && categoryId === EXTRA_INCOME) categoryId = ''
+  }
+
   async function save() {
-    if (amount <= 0 || !date) return
-    await updateTransaction(tx.id, { amount, categoryId, subcategoryId, date, label })
+    if (!canSave) return
+    const extra = categoryId === EXTRA_INCOME
+    // Remboursement dans une catégorie = montant négatif ; rentrée exceptionnelle = positif
+    const signed = kind === 'income' && !extra ? -amount : amount
+    await updateTransaction(tx.id, { amount: signed, categoryId, subcategoryId: extra ? undefined : subcategoryId, date, label })
     onclose()
   }
 
@@ -56,7 +70,7 @@
     await deleteTransaction(removed.id)
     onclose()
     showToast({
-      message: `${formatEUR(removed.amount)} supprimé`,
+      message: `${removed.amount < 0 ? '+' : ''}${formatEUR(Math.abs(removed.amount))} supprimé`,
       action: { label: 'Annuler', run: () => db.transactions.put(removed) },
     })
   }
@@ -68,8 +82,17 @@
   <header>
     <button type="button" class="text" onclick={onclose}>Annuler</button>
     <h2>Modifier</h2>
-    <button type="button" class="text strong" onclick={save} disabled={amount <= 0}>Enregistrer</button>
+    <button type="button" class="text strong" onclick={save} disabled={!canSave}>Enregistrer</button>
   </header>
+
+  <div class="kind" role="radiogroup" aria-label="Type">
+    <button type="button" role="radio" aria-checked={kind === 'expense'} class:on={kind === 'expense'} onclick={() => chooseKind('expense')}>
+      − Dépense
+    </button>
+    <button type="button" role="radio" aria-checked={kind === 'income'} class:on={kind === 'income'} onclick={() => chooseKind('income')}>
+      + Rentrée
+    </button>
+  </div>
 
   <div class="fields">
     <div class="amount"><MoneyField bind:value={amount} ariaLabel="Montant" /></div>
@@ -89,7 +112,23 @@
         <span aria-hidden="true">{c.emoji}</span>{c.name}
       </button>
     {/each}
+    {#if kind === 'income'}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={categoryId === EXTRA_INCOME}
+        class:selected={categoryId === EXTRA_INCOME}
+        onclick={() => chooseCategory(EXTRA_INCOME)}
+      >
+        <span aria-hidden="true">{EXTRA_INCOME_LABEL.emoji}</span>Rentrée exc.
+      </button>
+    {/if}
   </div>
+  {#if kind === 'income' && categoryId !== EXTRA_INCOME}
+    <p class="hint">Remboursement : l'argent revient dans la catégorie choisie.</p>
+  {:else if kind === 'expense' && categoryId === ''}
+    <p class="hint">Choisis la catégorie de la dépense.</p>
+  {/if}
 
   {#if subs.length}
     <div class="subs" role="radiogroup" aria-label="Sous-catégorie">
@@ -175,6 +214,33 @@
   }
   .text:disabled {
     opacity: 0.4;
+  }
+  .kind {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--field);
+    border-radius: 10px;
+    padding: 3px;
+  }
+  .kind button {
+    height: 34px;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .kind button.on {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+  .kind button.on:last-child {
+    color: var(--ok);
+  }
+  .hint {
+    margin: -8px 0 0;
+    font-size: 0.8rem;
+    color: var(--muted);
   }
   .fields {
     display: grid;
