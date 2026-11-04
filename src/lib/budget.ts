@@ -40,6 +40,8 @@ export interface MonthStats {
   totalSpent: number
   remaining: number
   daysInMonth: number
+  /** Mois terminé : les chiffres sont définitifs (épargne réalisée, plus de rythme à suivre) */
+  finished: boolean
   /** Jour courant dans le mois (0 = mois futur, daysInMonth = mois passé) */
   day: number
   /** Fraction du mois écoulée, jour courant inclus */
@@ -57,6 +59,7 @@ export interface MonthStats {
   /**
    * Épargne projetée en fin de mois, en supposant que chaque catégorie consomme tout son budget :
    * revenus + rentrées − charges fixes − Σ max(budget, dépensé). Elle baisse dès qu'une catégorie dépasse.
+   * Mois terminé : épargne réellement réalisée (revenus + rentrées − charges fixes − dépensé).
    */
   projectedSavings: number
   onTrack: boolean
@@ -87,6 +90,7 @@ export function computeStats(
 
   const dim = daysInMonth(month.id)
   const currentMonth = monthOf(today)
+  const finished = month.id < currentMonth
   const day = month.id === currentMonth ? dayOfMonth(today) : month.id < currentMonth ? dim : 0
   const elapsed = day / dim
   const daysLeft = Math.max(1, dim - day + 1)
@@ -145,7 +149,7 @@ export function computeStats(
   const knownIds = new Set(shown.map((c) => c.id))
   const orphanSpent = transactions.filter((t) => !knownIds.has(t.categoryId)).reduce((s, t) => s + t.amount, 0)
   const committed = stats.reduce((s, c) => s + Math.max(c.budget, c.spent), 0) + orphanSpent
-  const projectedSavings = month.income + extraIncome - month.fixedCharges - committed
+  const projectedSavings = month.income + extraIncome - month.fixedCharges - (finished ? totalSpent : committed)
 
   return {
     monthId: month.id,
@@ -154,6 +158,7 @@ export function computeStats(
     totalSpent,
     remaining,
     daysInMonth: dim,
+    finished,
     day,
     elapsed,
     daysLeft,

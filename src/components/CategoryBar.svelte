@@ -11,6 +11,8 @@
     over: 'Dépassé',
   }
 
+  // Mois terminé : seul le dépassement compte, plus d'alerte de rythme
+  const tag = $derived(elapsed >= 1 && stat.status !== 'over' ? '' : STATUS_LABEL[stat.status])
   const fill = $derived(stat.budget > 0 ? Math.min(1, stat.spent / stat.budget) : stat.spent > 0 ? 1 : 0)
 </script>
 
@@ -40,7 +42,7 @@
   </div>
   <div class="foot">
     <span>{formatEURRounded(stat.spent)} / {formatEURRounded(stat.budget)}</span>
-    {#if STATUS_LABEL[stat.status]}<span class="tag {stat.status}">{STATUS_LABEL[stat.status]}</span>{/if}
+    {#if tag}<span class="tag {stat.status}">{tag}</span>{/if}
   </div>
 
   {#if stat.subs.some((r) => r.spent !== 0 || r.budget !== null)}

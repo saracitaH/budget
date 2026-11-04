@@ -24,6 +24,11 @@
     subcategories: Subcategory[]
     month: Month | undefined
     transactions: Transaction[]
+    /** Mois affiché dans Budget et Dépenses (le mois en cours par défaut) */
+    viewMonth: Month | undefined
+    viewTransactions: Transaction[]
+    /** Mois consultables, du plus ancien au plus récent */
+    months: string[]
     totalCount: number
   }
 
@@ -34,6 +39,13 @@
   let ready = $state(false)
 
   const monthId = $derived(monthOf(today))
+  /** null = suit le mois en cours */
+  let pickedMonth = $state<string | null>(null)
+  const viewId = $derived(pickedMonth ?? monthId)
+
+  function onmonth(id: string) {
+    pickedMonth = id === monthId ? null : id
+  }
   const showInstallHint = isIOS() && !isStandalone()
 
   onMount(() => {
@@ -65,14 +77,25 @@
   $effect(() => {
     if (!ready) return
     const m = monthId
-    const sub = liveQuery(async () => ({
-      settings: await getSettings(),
-      categories: await db.categories.orderBy('order').filter((c) => !c.archived).toArray(),
-      subcategories: await db.subcategories.orderBy('order').toArray(),
-      month: await db.months.get(m),
-      transactions: await db.transactions.where('month').equals(m).toArray(),
-      totalCount: await db.transactions.count(),
-    })).subscribe({
+    const v = viewId
+    const sub = liveQuery(async () => {
+      const month = await db.months.get(m)
+      const transactions = await db.transactions.where('month').equals(m).toArray()
+      const ids = new Set((await db.months.toCollection().primaryKeys()) as string[])
+      ids.add(m)
+      return {
+        settings: await getSettings(),
+        categories: await db.categories.orderBy('order').filter((c) => !c.archived).toArray(),
+        subcategories: await db.subcategories.orderBy('order').toArray(),
+        month,
+        transactions,
+        viewMonth: v === m ? month : await db.months.get(v),
+        viewTransactions: v === m ? transactions : await db.transactions.where('month').equals(v).toArray(),
+        // Les mois futurs (dépense datée en avance) ne sont pas consultables
+        months: [...ids].filter((id) => id <= m).sort(),
+        totalCount: await db.transactions.count(),
+      }
+    }).subscribe({
       next: (v) => (data = v),
       error: (e) => (error = String(e)),
     })
@@ -81,6 +104,11 @@
 
   const stats = $derived(
     data?.month ? computeStats(data.month, data.categories, data.transactions, today, data.subcategories) : null,
+  )
+  const viewStats = $derived(
+    data?.viewMonth
+      ? computeStats(data.viewMonth, data.categories, data.viewTransactions, today, data.subcategories)
+      : null,
   )
 
   // Rappel de sauvegarde : jamais faite (et des données existent) ou plus de 7 jours
@@ -146,15 +174,26 @@
     <main class:fixed={tab === 'entry'}>
       {#if tab === 'entry'}
         <Entry categories={data.categories} subcategories={data.subcategories} {stats} {today} />
-      {:else if tab === 'dashboard' && stats}
-        <Dashboard {stats} {backupDue} onbackup={backup} />
+      {:else if tab === 'dashboard' && viewStats}
+        <Dashboard
+          stats={viewStats}
+          transactions={data.viewTransactions}
+          categories={data.categories}
+          subcategories={data.subcategories}
+          months={data.months}
+          {onmonth}
+          {backupDue}
+          onbackup={backup}
+        />
       {:else if tab === 'expenses'}
         <Expenses
-          transactions={data.transactions}
+          transactions={data.viewTransactions}
           categories={data.categories}
           subcategories={data.subcategories}
           {today}
-          {monthId}
+          monthId={viewId}
+          months={data.months}
+          {onmonth}
         />
       {:else if tab === 'settings'}
         <SettingsScreen

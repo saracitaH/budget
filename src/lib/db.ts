@@ -360,3 +360,22 @@ export async function removeSubcategory(id: string): Promise<void> {
   })
   await syncCurrentMonth()
 }
+
+/** Bilan : crée une sous-catégorie à partir d'un libellé récurrent et y range les dépenses concernées. */
+export async function subcategoryFromLabel(categoryId: string, name: string, txIds: string[]): Promise<void> {
+  await db.transaction('rw', [db.subcategories, db.transactions], async () => {
+    const siblings = await db.subcategories.where('categoryId').equals(categoryId).toArray()
+    const id = newId()
+    await db.subcategories.add({
+      id,
+      categoryId,
+      name: name.trim(),
+      emoji: '',
+      order: Math.max(-1, ...siblings.map((s) => s.order)) + 1,
+      budget: null,
+      archived: false,
+    })
+    const now = new Date().toISOString()
+    for (const txId of txIds) await db.transactions.update(txId, { subcategoryId: id, updatedAt: now })
+  })
+}
