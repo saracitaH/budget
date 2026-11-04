@@ -1,19 +1,40 @@
 <script lang="ts">
   import CategoryBar from '../components/CategoryBar.svelte'
+  import MonthNav from '../components/MonthNav.svelte'
+  import MonthReview from '../components/MonthReview.svelte'
   import type { MonthStats } from '../lib/budget'
   import { monthLabel } from '../lib/dates'
+  import type { Category, Subcategory, Transaction } from '../lib/db'
   import { formatEURRounded } from '../lib/money'
 
   let {
     stats,
+    transactions,
+    categories,
+    subcategories,
+    months,
+    onmonth,
     backupDue,
     onbackup,
   }: {
     stats: MonthStats
+    transactions: Transaction[]
+    categories: Category[]
+    subcategories: Subcategory[]
+    /** Mois consultables, du plus ancien au plus récent */
+    months: string[]
+    onmonth: (id: string) => void
     /** Texte du rappel de sauvegarde, ou null */
     backupDue: string | null
     onbackup: () => void
   } = $props()
+
+  // Mois en cours : on propose d'aller voir le bilan du mois précédent s'il existe
+  const previous = $derived.by(() => {
+    if (stats.finished) return null
+    const i = months.indexOf(stats.monthId)
+    return i > 0 ? months[i - 1] : null
+  })
 
   const PACE_TEXT = {
     ok: 'Tu es dans le rythme.',
@@ -27,8 +48,8 @@
 
 <section class="dash">
   <header>
-    <h1>{monthLabel(stats.monthId)}</h1>
-    <span class="day">Jour {stats.day} / {stats.daysInMonth}</span>
+    <MonthNav monthId={stats.monthId} {months} {onmonth} />
+    <span class="day">{stats.finished ? 'Terminé' : `Jour ${stats.day} / ${stats.daysInMonth}`}</span>
   </header>
 
   {#if backupDue}
@@ -38,6 +59,25 @@
     </div>
   {/if}
 
+  {#if previous}
+    <button type="button" class="card recap" onclick={() => onmonth(previous)}>
+      <span>📊 Le bilan de <b>{monthLabel(previous)}</b> est prêt</span>
+      <span aria-hidden="true">›</span>
+    </button>
+  {/if}
+
+  {#if stats.finished}
+    <div class="card hero">
+      <span class="kicker">Dépensé ce mois-là</span>
+      <span class="big">{formatEURRounded(stats.totalSpent)}</span>
+      <span class="sub">sur un budget de <b>{formatEURRounded(stats.totalBudget)}</b></span>
+      {#if stats.remaining >= 0}
+        <span class="rhythm ok">{formatEURRounded(stats.remaining)} non dépensés, partis à l'épargne.</span>
+      {:else}
+        <span class="rhythm over">Budget dépassé de {formatEURRounded(-stats.remaining)}.</span>
+      {/if}
+    </div>
+  {:else}
   <div class="card hero">
     <span class="kicker">Reste à dépenser</span>
     <span class="big" class:neg={stats.remaining < 0}>{formatEURRounded(stats.remaining)}</span>
@@ -49,10 +89,11 @@
     {/if}
     <span class="rhythm {stats.status}">{PACE_TEXT[stats.status]}</span>
   </div>
+  {/if}
 
   <div class="card savings">
     <div>
-      <span class="kicker">Épargne prévue</span>
+      <span class="kicker">{stats.finished ? 'Épargne réalisée' : 'Épargne prévue'}</span>
       <span class="mid">{formatEURRounded(stats.projectedSavings)}</span>
       <span class="sub">objectif {formatEURRounded(stats.savingsGoal)}</span>
       {#if stats.extraIncome > 0}
@@ -66,12 +107,18 @@
     {/if}
   </div>
 
+  {#if stats.finished}
+    <MonthReview {stats} {transactions} {categories} {subcategories} />
+  {/if}
+
   <div class="card">
     <h2>Par catégorie</h2>
     {#each stats.categories as stat (stat.category.id)}
       <CategoryBar {stat} elapsed={stats.elapsed} />
     {/each}
-    <p class="legend">Le trait vertical indique où tu devrais en être aujourd'hui pour finir le mois pile dans le budget.</p>
+    {#if !stats.finished}
+      <p class="legend">Le trait vertical indique où tu devrais en être aujourd'hui pour finir le mois pile dans le budget.</p>
+    {/if}
   </div>
 </section>
 
@@ -84,19 +131,30 @@
   header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
   }
-  h1 {
-    margin: 0;
-    font-size: 1.6rem;
-    letter-spacing: -0.02em;
-  }
-  h1::first-letter {
-    text-transform: uppercase;
+  header {
+    gap: 8px;
   }
   .day {
+    flex-shrink: 0;
     color: var(--muted);
     font-size: 0.9rem;
+  }
+  .recap {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--accent-soft);
+    color: var(--text);
+    text-align: left;
+  }
+  .recap span:last-child {
+    font-size: 1.4rem;
+    line-height: 1;
+    color: var(--accent-text);
   }
   .card {
     background: var(--surface);

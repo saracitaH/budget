@@ -1,6 +1,7 @@
 <script lang="ts">
   import EditSheet from '../components/EditSheet.svelte'
-  import { dayLabel, monthLabel } from '../lib/dates'
+  import MonthNav from '../components/MonthNav.svelte'
+  import { dayLabel, monthOf } from '../lib/dates'
   import { EXTRA_INCOME, EXTRA_INCOME_LABEL, type Category, type Subcategory, type Transaction } from '../lib/db'
   import { formatEUR } from '../lib/money'
 
@@ -10,12 +11,17 @@
     subcategories,
     today,
     monthId,
+    months,
+    onmonth,
   }: {
     transactions: Transaction[]
     categories: Category[]
     subcategories: Subcategory[]
     today: string
     monthId: string
+    /** Mois consultables, du plus ancien au plus récent */
+    months: string[]
+    onmonth: (id: string) => void
   } = $props()
 
   let filter = $state<string | null>(null)
@@ -61,11 +67,11 @@
 
 <section class="expenses">
   <header>
-    <h1>Dépenses</h1>
+    <MonthNav {monthId} {months} {onmonth} />
     {#if filter !== EXTRA_INCOME}<span class="total">{formatEUR(total)}</span>{/if}
   </header>
   <p class="month">
-    {monthLabel(monthId)}
+    Dépenses
     {#if extraTotal > 0}· <span class="in">+{formatEUR(extraTotal)} de rentrées</span>{/if}
   </p>
 
@@ -92,7 +98,7 @@
   </div>
 
   {#if days.length === 0}
-    <p class="empty">Aucune dépense {filter ? 'dans cette catégorie ' : ''}ce mois-ci.</p>
+    <p class="empty">Aucune dépense {filter ? 'dans cette catégorie ' : ''}{monthId === monthOf(today) ? 'ce mois-ci' : 'ce mois-là'}.</p>
   {/if}
 
   {#each days as day (day.date)}
@@ -133,19 +139,16 @@
   header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-  }
-  h1 {
-    margin: 0;
-    font-size: 1.6rem;
-    letter-spacing: -0.02em;
+    align-items: center;
+    gap: 8px;
   }
   .total {
+    flex-shrink: 0;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
   .month {
-    margin: 0 0 12px;
+    margin: 2px 0 12px;
     color: var(--muted);
   }
   .filters {
