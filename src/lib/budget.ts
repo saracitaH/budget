@@ -59,9 +59,17 @@ export interface MonthStats {
   /**
    * Épargne projetée en fin de mois, en supposant que chaque catégorie consomme tout son budget :
    * revenus + rentrées − charges fixes − Σ max(budget, dépensé). Elle baisse dès qu'une catégorie dépasse.
-   * Mois terminé : épargne réellement réalisée (revenus + rentrées − charges fixes − dépensé).
+   * Mois terminé : épargne réellement réalisée (revenus + rentrées − charges fixes − dépensé),
+   * ou l'épargne réelle saisie à la main si elle est renseignée.
    */
   projectedSavings: number
+  /** Épargne réelle saisie à la main pour un mois terminé, sinon null */
+  actualSavings: number | null
+  /**
+   * Écart entre l'épargne calculée et l'épargne réelle : > 0 = argent parti sans être noté,
+   * < 0 = plus d'épargne que prévu (rentrée non notée…). 0 si l'épargne réelle n'est pas renseignée.
+   */
+  untracked: number
   onTrack: boolean
   status: Status
 }
@@ -149,7 +157,10 @@ export function computeStats(
   const knownIds = new Set(shown.map((c) => c.id))
   const orphanSpent = transactions.filter((t) => !knownIds.has(t.categoryId)).reduce((s, t) => s + t.amount, 0)
   const committed = stats.reduce((s, c) => s + Math.max(c.budget, c.spent), 0) + orphanSpent
-  const projectedSavings = month.income + extraIncome - month.fixedCharges - (finished ? totalSpent : committed)
+  const computedSavings = month.income + extraIncome - month.fixedCharges - (finished ? totalSpent : committed)
+  const actualSavings = finished && month.actualSavings !== undefined ? month.actualSavings : null
+  const projectedSavings = actualSavings ?? computedSavings
+  const untracked = actualSavings === null ? 0 : computedSavings - actualSavings
 
   return {
     monthId: month.id,
@@ -169,6 +180,8 @@ export function computeStats(
     savingsGoal: month.savingsGoal,
     available: month.income - month.fixedCharges - month.savingsGoal,
     projectedSavings,
+    actualSavings,
+    untracked,
     onTrack: projectedSavings >= month.savingsGoal,
     status: statusFor(totalSpent, totalBudget, totalBudget * elapsed),
   }

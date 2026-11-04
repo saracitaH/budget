@@ -27,6 +27,10 @@ export interface LabelGroup {
 }
 
 export type Tip =
+  /** Écart avec l'épargne réelle : argent parti sans être noté (share = part des dépenses réelles) */
+  | { kind: 'untracked'; amount: number; share: number }
+  /** Épargne réelle supérieure au calcul : rentrée non notée ou dépense comptée deux fois */
+  | { kind: 'surplus'; amount: number }
   | { kind: 'over'; categoryId: string; amount: number }
   | { kind: 'slack'; categoryId: string; budget: number; spent: number; cut: number }
   | { kind: 'small'; group: LabelGroup; average: number; saving: number }
@@ -64,6 +68,8 @@ export function normalizeLabel(label: string): string {
 }
 
 const UNLABELLED = '__sans-libelle:'
+/** Clé du poste « Non suivi » (écart avec l'épargne réelle) */
+export const UNTRACKED = '__non-suivi'
 
 /** À égalité, « Amazon » l'emporte sur « amazon » pour l'affichage */
 const capitalised = (s: string) => (s[0] !== s[0].toLowerCase() ? 1 : 0)
@@ -111,6 +117,24 @@ export function buildReview(
       withSub: g.items.filter((t) => t.subcategoryId).length,
     }
   })
+  // Épargne réelle renseignée : l'argent parti sans être noté devient un poste à part entière
+  const untracked = Math.max(0, stats.untracked)
+  if (untracked > 0) {
+    groups.push({
+      key: UNTRACKED,
+      name: 'Non suivi',
+      labelled: false,
+      total: untracked,
+      count: 0,
+      share: 0,
+      categoryId: '',
+      categoryIds: [],
+      txIds: [],
+      withSub: 0,
+    })
+  }
+  const realSpent = totalSpent + untracked
+  for (const g of groups) g.share = realSpent > 0 ? g.total / realSpent : 0
   groups.sort((a, b) => b.total - a.total || b.count - a.count)
 
   const biggest = tx
@@ -166,7 +190,10 @@ export function buildReview(
     if (!exists) toSub.push({ kind: 'subcategory', group: g })
   }
   // Les 3 plus grosses marges d'abord, les autres en fin de liste
-  const tips: Tip[] = [...over, ...slack.slice(0, 3), ...small, ...toSub, ...scattered, ...slack.slice(3)]
+  const gap: Tip[] = []
+  if (stats.untracked >= MIN_CUT) gap.push({ kind: 'untracked', amount: stats.untracked, share: untracked / realSpent })
+  else if (stats.untracked <= -MIN_CUT) gap.push({ kind: 'surplus', amount: -stats.untracked })
+  const tips: Tip[] = [...gap, ...over, ...slack.slice(0, 3), ...small, ...toSub, ...scattered, ...slack.slice(3)]
 
   return {
     groups,

@@ -3,7 +3,7 @@
   import { parseISO } from '../lib/dates'
   import { subcategoryFromLabel, type Category, type Subcategory, type Transaction } from '../lib/db'
   import { formatEUR, formatEURRounded } from '../lib/money'
-  import { buildReview, type LabelGroup } from '../lib/review'
+  import { buildReview, UNTRACKED, type LabelGroup } from '../lib/review'
   import { showToast } from '../lib/toast.svelte'
   import Gauge from './Gauge.svelte'
 
@@ -92,7 +92,9 @@
           </div>
           <div class="hbar" aria-hidden="true"><div style:width="{(g.total / maxGroup) * 100}%"></div></div>
           <div class="gfoot">
-            <span>{g.count}×{g.labelled ? ` · ${g.categoryIds.map(name).join(', ')}` : ''}</span>
+            <span>
+              {#if g.key === UNTRACKED}écart avec ton épargne réelle{:else}{g.count}×{g.labelled ? ` · ${g.categoryIds.map(name).join(', ')}` : ''}{/if}
+            </span>
             <span>{Math.round(g.share * 100)} %</span>
           </div>
         </li>
@@ -173,7 +175,19 @@
     <ul class="tips">
       {#each shownTips as tip, i (i)}
         <li class={tip.kind}>
-          {#if tip.kind === 'over'}
+          {#if tip.kind === 'untracked'}
+            <span class="ico" aria-hidden="true">🔍</span>
+            <p>
+              <b>{formatEURRounded(tip.amount)}</b> sont partis sans être notés, soit {Math.round(tip.share * 100)} % de tes
+              dépenses réelles. Pense aux petits paiements, aux retraits et aux prélèvements qui varient.
+            </p>
+          {:else if tip.kind === 'surplus'}
+            <span class="ico" aria-hidden="true">🔍</span>
+            <p>
+              Tu as épargné <b>{formatEURRounded(tip.amount)}</b> de plus que ce que disent tes saisies : une rentrée
+              non notée, ou une dépense comptée deux fois ?
+            </p>
+          {:else if tip.kind === 'over'}
             <span class="ico" aria-hidden="true">⚠️</span>
             <p>
               <b>{emoji(tip.categoryId)} {name(tip.categoryId)}</b> : {formatEURRounded(tip.amount)} au-dessus du budget.
