@@ -75,6 +75,8 @@ export interface Month {
   budgets: Record<string, number>
   /** Budgets des sous-catégories qui en ont un (absent sur les mois créés avant la V1.1) */
   subBudgets?: Record<string, number>
+  /** Épargne réellement constatée en fin de mois (centimes), saisie à la main ; absente = non renseignée */
+  actualSavings?: number
   closed: boolean
 }
 
@@ -377,5 +379,15 @@ export async function subcategoryFromLabel(categoryId: string, name: string, txI
     })
     const now = new Date().toISOString()
     for (const txId of txIds) await db.transactions.update(txId, { subcategoryId: id, updatedAt: now })
+  })
+}
+
+/** Mois terminé : enregistre l'épargne réelle constatée sur le compte (null = l'effacer). */
+export async function setActualSavings(monthId: string, cents: number | null): Promise<void> {
+  await db.transaction('rw', db.months, async () => {
+    const month = await db.months.get(monthId)
+    if (!month) return
+    const { actualSavings: _old, ...rest } = month
+    await db.months.put(cents === null ? rest : { ...rest, actualSavings: cents })
   })
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computeStats } from './budget'
 import type { Category, Month, Subcategory, Transaction } from './db'
-import { buildReview, normalizeLabel } from './review'
+import { buildReview, normalizeLabel, UNTRACKED } from './review'
 
 const cat = (id: string, budget: number): Category => ({
   id,
@@ -106,5 +106,36 @@ describe('buildReview', () => {
     expect(r.daily[0]).toBe(7000)
     expect(r.daily[30]).toBe(9000)
     expect(r.biggest.map((t) => t.label)).toEqual(['C', 'A', 'B'])
+  })
+
+  it('épargne réelle : l’écart devient un poste « Non suivi » et une piste en tête', () => {
+    const list = [tx('courses', 30000, 'Carrefour'), tx('sorties', 8000, 'Bar')]
+    // Calculée : 2500 − 1000 − 380 = 1120 € ; réelle : 1000 € → 120 € non suivis
+    const stats = computeStats({ ...month, actualSavings: 100000 }, cats, list, '2026-11-04')
+    expect(stats.projectedSavings).toBe(100000)
+    expect(stats.untracked).toBe(12000)
+    const r = buildReview(stats, list, cats)
+    expect(r.groups.map((g) => [g.key === UNTRACKED ? 'non-suivi' : g.name, g.total])).toEqual([
+      ['Carrefour', 30000],
+      ['non-suivi', 12000],
+      ['Bar', 8000],
+    ])
+    expect(r.groups[0].share).toBeCloseTo(30000 / 50000)
+    expect(r.tips[0]).toEqual({ kind: 'untracked', amount: 12000, share: 12000 / 50000 })
+  })
+
+  it('épargne réelle supérieure au calcul : piste « rentrée non notée »', () => {
+    const list = [tx('courses', 30000)]
+    const stats = computeStats({ ...month, actualSavings: 130000 }, cats, list, '2026-11-04')
+    expect(stats.untracked).toBe(-10000)
+    const r = buildReview(stats, list, cats)
+    expect(r.tips[0]).toEqual({ kind: 'surplus', amount: 10000 })
+    expect(r.groups.some((g) => g.key === UNTRACKED)).toBe(false)
+  })
+
+  it('l’épargne réelle est ignorée sur le mois en cours', () => {
+    const stats = computeStats({ ...month, actualSavings: 1 }, cats, [], '2026-10-15')
+    expect(stats.actualSavings).toBeNull()
+    expect(stats.untracked).toBe(0)
   })
 })

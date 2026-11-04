@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ActualSavings from '../components/ActualSavings.svelte'
   import CategoryBar from '../components/CategoryBar.svelte'
   import MonthNav from '../components/MonthNav.svelte'
   import MonthReview from '../components/MonthReview.svelte'
@@ -71,7 +72,12 @@
       <span class="kicker">Dépensé ce mois-là</span>
       <span class="big">{formatEURRounded(stats.totalSpent)}</span>
       <span class="sub">sur un budget de <b>{formatEURRounded(stats.totalBudget)}</b></span>
-      {#if stats.remaining >= 0}
+      {#if stats.remaining >= 0 && stats.untracked > 0}
+        <span class="rhythm warn">
+          {formatEURRounded(stats.remaining)} de budget non utilisé, mais {formatEURRounded(stats.untracked)} partis sans
+          être notés.
+        </span>
+      {:else if stats.remaining >= 0}
         <span class="rhythm ok">{formatEURRounded(stats.remaining)} non dépensés, partis à l'épargne.</span>
       {:else}
         <span class="rhythm over">Budget dépassé de {formatEURRounded(-stats.remaining)}.</span>
@@ -91,9 +97,12 @@
   </div>
   {/if}
 
-  <div class="card savings">
+  <div class="card">
+  <div class="savings">
     <div>
-      <span class="kicker">{stats.finished ? 'Épargne réalisée' : 'Épargne prévue'}</span>
+      <span class="kicker">
+        {stats.finished ? (stats.actualSavings !== null ? 'Épargne réelle' : 'Épargne réalisée') : 'Épargne prévue'}
+      </span>
       <span class="mid">{formatEURRounded(stats.projectedSavings)}</span>
       <span class="sub">objectif {formatEURRounded(stats.savingsGoal)}</span>
       {#if stats.extraIncome > 0}
@@ -105,6 +114,10 @@
     {:else}
       <span class="badge over">Il manque {formatEURRounded(-gap)}</span>
     {/if}
+  </div>
+  {#if stats.finished}
+    <ActualSavings {stats} />
+  {/if}
   </div>
 
   {#if stats.finished}
